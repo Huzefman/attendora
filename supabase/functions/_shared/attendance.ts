@@ -1,0 +1,168 @@
+import { getEffectiveTimes, type ShiftInfo } from './shift.ts'
+
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
+
+export function getISTMinutes(utcIso: string): number {
+  const d = new Date(utcIso)
+  const ist = new Date(d.getTime() + IST_OFFSET_MS)
+  return ist.getUTCHours() * 60 + ist.getUTCMinutes()
+}
+
+/** Formats a UTC ISO timestamp to HH:MM IST for use in notifications. */
+export function formatISTTime(utcIso: string): string {
+  const d = new Date(utcIso)
+  const ist = new Date(d.getTime() + IST_OFFSET_MS)
+  const h = String(ist.getUTCHours()).padStart(2, '0')
+  const m = String(ist.getUTCMinutes()).padStart(2, '0')
+  return `${h}:${m}`
+}
+
+export function computeTotalHours(
+  checkIn: string,
+  checkOut: string,
+  breakMinutes: number,
+  isNightShift: boolean,
+  capAt: string | null = null
+): number {
+  const inTime = new Date(checkIn).getTime()
+  let outTime = new Date(checkOut).getTime()
+
+  if (capAt) {
+    const checkInDate = new Date(checkIn)
+    const checkInIST = new Date(checkInDate.getTime() + IST_OFFSET_MS)
+    const [ch, cm] = capAt.split(':').map(Number)
+    checkInIST.setUTCHours(ch, cm, 0, 0)
+    const capTime = new Date(checkInIST.getTime() - IST_OFFSET_MS)
+    if (outTime > capTime.getTime()) {
+      outTime = capTime.getTime()
+    }
+  }
+
+  if (isNightShift && outTime < inTime) {
+    outTime += 24 * 60 * 60 * 1000
+  }
+
+  const diffMs = outTime - inTime
+  const diffHours = diffMs / (1000 * 60 * 60)
+  const hours = Math.max(0, diffHours - breakMinutes / 60)
+  return Math.round(hours * 100) / 100
+}
+
+export function computeIsLate(
+  checkInTime: string,
+  shiftStart: string,
+  gracePeriodMinutes: number
+): boolean {
+  const checkInMinutes = getISTMinutes(checkInTime)
+  const [sh, sm] = shiftStart.split(':').map(Number)
+  const shiftStartMinutes = sh * 60 + sm
+  return checkInMinutes > shiftStartMinutes + gracePeriodMinutes
+}
+
+export type AttendanceRecordForCompute = {
+  id?: string
+  employee_id: string
+  date: string
+  shift_id?: string | null
+  check_in_time?: string | null
+  check_out_time?: string | null
+  is_wfh: boolean
+  status: string
+  total_hours?: number | null
+  is_late: boolean
+  is_manually_entered: boolean
+  wfh_start_time?: string | null
+  wfh_end_time?: string | null
+}
+
+export function computeStatus(
+  record: AttendanceRecordForCompute,
+  shift: ShiftInfo,
+  holidayFlag: boolean,
+  weeklyOffFlag: boolean
+): {
+  status: string
+  total_hours: number | null
+  is_late: boolean
+} {
+  if (record.status === 'on_leave') {
+    return { status: 'on_leave', total_hours: record.total_hours, is_late: record.is_late }
+  }
+
+  if (holidayFlag) {
+    return { status: 'holiday', total_hours: null, is_late: false }
+  }
+
+  if (weeklyOffFlag) {
+    return { status: 'weekly_off', total_hours: null, is_late: false }
+  }
+
+  // WFH day — track hours from wfh_start_time → wfh_end_time (capped at shift end)
+  if (record.is_wfh) {
+    if (record.wfh_start_time && record.wfh_end_time) {
+      const effective = getEffectiveTimes(shift, record.date)
+      const totalHours = computeTotalHours(
+        record.wfh_start_time,
+        record.wfh_end_time,
+        shift.break_minutes,
+        shift.is_night_shift,
+        effective.end_time
+      )
+      return { status: 'work_from_home', total_hours: totalHours, is_late: false }
+    }
+    return { status: 'work_from_home', total_hours: null, is_late: false }
+  }
+
+  // No check-in → absent
+  if (!record.check_in_time) {
+    return { status: 'absent', total_hours: null, is_late: false }
+  }
+
+  // Resolve effective start/end for the day (Saturday may differ)
+  const effective = getEffectiveTimes(shift, record.date)
+  const effectiveStart = effective.start_time
+  const effectiveEnd = effective.end_time
+
+  // Minutes past shift start (negative = before shift)
+  const checkInMinutes = getISTMinutes(record.check_in_time)
+  const [sh, sm] = effectiveStart.split(':').map(Number)
+  const shiftStartMinutes = sh * 60 + sm
+  const diffMin = checkInMinutes - shiftStartMinutes
+
+  const isLate = checkInMinutes > shiftStartMinutes
+
+  // Compute total_hours if check-out exists
+  let totalHours: number | null = null
+  if (record.check_out_time) {
+    totalHours = computeTotalHours(
+      record.check_in_time,
+      record.check_out_time,
+      shift.break_minutes,
+      shift.is_night_shift,
+      effectiveEnd
+    )
+  }
+
+  const { grace_period_minutes, half_day_threshold_minutes } = shift
+  const lateCutoff = grace_period_minutes
+  const halfDayCutoff = grace_period_minutes + half_day_threshold_minutes
+
+  if (diffMin <= 0) {
+    return { status: 'present', total_hours: totalHours, is_late: false }
+  }
+
+  if (diffMin <= lateCutoff) {
+    return { status: 'present', total_hours: totalHours, is_late: false }
+  }
+
+  if (diffMin <= halfDayCutoff) {
+    return { status: 'late', total_hours: totalHours, is_late: true }
+  }
+
+  return { status: 'half_day', total_hours: totalHours, is_late: true }
+}
+
+export function parseTime(time: string): number {
+  const [h, m] = time.split(':').map(Number)
+  return h + m / 60
+}

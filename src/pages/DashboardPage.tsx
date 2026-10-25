@@ -1,0 +1,776 @@
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { useRole } from '@/hooks/useRole'
+import { useAuthStore } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Loader2, Users, Clock, Calendar, CheckCircle2, ArrowRight, Home, BarChart3, Sparkles } from 'lucide-react'
+import { useCheckIn, useCheckOut, useLogWFH, useEndWFH } from '@/features/attendance/mutations'
+import { getCurrentPositionQuick, formatHours } from '@/features/attendance/utils'
+import { PulseCheckInCard } from '@/features/pulse/components/PulseCheckInCard'
+import { PulseTrendCard } from '@/features/pulse/components/PulseTrendCard'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { toast } from 'sonner'
+import { LocationMapCard } from '@/features/attendance/components/LocationMapCard'
+
+async function fetchDashboardCounts() {
+  const [empRes, leaveRes, regRes, earlyRes] = await Promise.all([
+    supabase.from('employees').select('*', { head: true, count: 'exact' }).eq('is_active', true),
+    supabase.from('leave_applications').select('*', { head: true, count: 'exact' }).eq('status', 'pending'),
+    supabase.from('attendance_regularization_requests').select('*', { head: true, count: 'exact' }).eq('status', 'pending'),
+    supabase.from('attendance_records').select('*', { head: true, count: 'exact' }).eq('early_checkout_status', 'pending'),
+  ])
+  return {
+    totalEmployees: empRes.count ?? 0,
+    pendingLeaves: leaveRes.count ?? 0,
+    pendingRegularizations: regRes.count ?? 0,
+    pendingEarlyCheckouts: earlyRes.count ?? 0,
+  }
+}
+
+async function fetchEmployeeDashboard() {
+  const emp = useAuthStore.getState().employee
+  if (!emp) return null
+
+  const today = new Date().toISOString().split('T')[0]
+
+  const [attendanceRes, leaveBalancesRes, pendingLeavesRes] = await Promise.all([
+    supabase
+      .from('attendance_records')
+      .select('*')
+      .eq('employee_id', emp.id)
+      .eq('date', today)
+      .maybeSingle(),
+    supabase
+      .from('leave_balances')
+      .select('*, leave_type:leave_types(name, code)')
+      .eq('employee_id', emp.id),
+    supabase
+      .from('leave_applications')
+      .select('*')
+      .eq('employee_id', emp.id)
+      .in('status', ['pending', 'approved'])
+      .gte('from_date', today)
+      .order('from_date')
+      .limit(5),
+  ])
+
+  return {
+    todayAttendance: attendanceRes.data,
+    leaveBalances: leaveBalancesRes.data ?? [],
+    upcomingLeaves: pendingLeavesRes.data ?? [],
+  }
+}
+
+function OwnerDashboard() {
+  const { data: counts, isLoading } = useQuery({
+    queryKey: ['dashboard', 'counts'],
+    queryFn: fetchDashboardCounts,
+  })
+
+  if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">People</CardTitle>
+          <Users className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{counts?.totalEmployees ?? 0}</div>
+          <p className="text-xs text-muted-foreground">Active people</p>
+          <Link to="/team-members" className="text-xs text-primary hover:underline mt-2 inline-flex items-center gap-1">
+            View all <ArrowRight className="h-3 w-3" />
+          </Link>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium">Time-off requests</CardTitle>
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-amber-600">{counts?.pendingLeaves ?? 0}</div>
+          <p className="text-xs text-muted-foreground">Awaiting approval</p>
+          <Link to="/leave/team" className="text-xs text-primary hover:underline mt-2 inline-flex items-center gap-1">
+            Review requests <ArrowRight className="h-3 w-3" />
+          </Link>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium">Attendance corrections</CardTitle>
+          <Clock className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-amber-600">{counts?.pendingRegularizations ?? 0}</div>
+          <p className="text-xs text-muted-foreground">Pending requests</p>
+          <Link to="/attendance/regularization?tab=pending" className="text-xs text-primary hover:underline mt-2 inline-flex items-center gap-1">
+            Review requests <ArrowRight className="h-3 w-3" />
+          </Link>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium">Early checkouts</CardTitle>
+          <Clock className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-amber-600">{counts?.pendingEarlyCheckouts ?? 0}</div>
+          <p className="text-xs text-muted-foreground">Pending approvals</p>
+          <Link to="/attendance/regularization?tab=early-checkouts" className="text-xs text-primary hover:underline mt-2 inline-flex items-center gap-1">
+            Review early checkouts <ArrowRight className="h-3 w-3" />
+          </Link>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium">Reports</CardTitle>
+          <BarChart3 className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Link to="/reports/attendance" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
+            Attendance report <ArrowRight className="h-3 w-3" />
+          </Link>
+          <Link to="/reports/daily" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
+            Daily attendance <ArrowRight className="h-3 w-3" />
+          </Link>
+          <Link to="/reports/leave" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
+            Time-off report <ArrowRight className="h-3 w-3" />
+          </Link>
+          <Link to="/reports/headcount" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
+            Headcount <ArrowRight className="h-3 w-3" />
+          </Link>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function HRDashboard() {
+  const emp = useAuthStore((s) => s.employee)
+  const { data: counts } = useQuery({
+    queryKey: ['dashboard', 'counts'],
+    queryFn: fetchDashboardCounts,
+  })
+  const { data: dashboard, isLoading, refetch } = useQuery({
+    queryKey: ['dashboard', 'employee', emp?.id],
+    queryFn: fetchEmployeeDashboard,
+    enabled: !!emp,
+  })
+
+  const checkIn = useCheckIn()
+  const checkOut = useCheckOut()
+  const logWFH = useLogWFH()
+  const endWFH = useEndWFH()
+
+  const [earlyCheckoutOpen, setEarlyCheckoutOpen] = useState(false)
+  const [earlyCheckoutReason, setEarlyCheckoutReason] = useState('')
+  const [wfhDialogOpen, setWfhDialogOpen] = useState(false)
+
+  // Soft geofence: location is optional context. If the browser cannot provide
+  // it, the server decides whether that is a flag (default) or a block (strict).
+  const handleCheckIn = async () => {
+    try {
+      const coords = await getCurrentPositionQuick()
+      const result = await checkIn.mutateAsync(coords ?? undefined)
+      toast.success(result.is_late ? 'Checked in — late' : 'Checked in successfully')
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      toast.error(err?.message ?? 'Check-in failed')
+    }
+  }
+
+  const handleCheckOutClick = async () => {
+    try {
+      const coords = await getCurrentPositionQuick()
+      const result = await checkOut.mutateAsync(
+        coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}
+      )
+      toast.success(`Checked out. Total: ${formatHours(result.total_hours)}`)
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string; code?: string }
+      if (err?.code === 'VALIDATION_ERROR' && err?.message?.toLowerCase().includes('early_checkout_reason')) {
+        setEarlyCheckoutReason('')
+        setEarlyCheckoutOpen(true)
+      } else {
+        toast.error(err?.message ?? 'Check-out failed')
+      }
+    }
+  }
+
+  const handleCheckOutConfirm = async () => {
+    if (!earlyCheckoutReason.trim()) {
+      toast.error('Please provide a reason for early checkout')
+      return
+    }
+    try {
+      const coords = await getCurrentPositionQuick()
+      const result = await checkOut.mutateAsync({
+        ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
+        early_checkout_reason: earlyCheckoutReason.trim(),
+      })
+      setEarlyCheckoutOpen(false)
+      toast.success(`Checked out. Total: ${formatHours(result.total_hours)}`)
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      toast.error(err?.message ?? 'Check-out failed')
+    }
+  }
+
+  const handleLogWFHClick = () => setWfhDialogOpen(true)
+
+  const handleLogWFHConfirm = async () => {
+    try {
+      await logWFH.mutateAsync()
+      setWfhDialogOpen(false)
+      toast.success('WFH logged for today')
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      toast.error(err?.message ?? 'Failed to log WFH')
+    }
+  }
+
+  const handleEndWFH = async () => {
+    try {
+      const result = await endWFH.mutateAsync()
+      toast.success(`WFH ended. Total: ${formatHours(result.total_hours)}`)
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      toast.error(err?.message ?? 'Failed to end WFH')
+    }
+  }
+
+  const checkedIn = !!dashboard?.todayAttendance?.check_in_time
+  const checkedOut = !!dashboard?.todayAttendance?.check_out_time
+  const isWFH = dashboard?.todayAttendance?.is_wfh ?? false
+  const wfhStarted = isWFH && !!dashboard?.todayAttendance?.wfh_start_time
+  const wfhEnded = !!dashboard?.todayAttendance?.wfh_end_time
+
+  if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>
+              {wfhStarted
+                ? `WFH since ${new Date(dashboard!.todayAttendance!.wfh_start_time!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+                : checkedIn
+                  ? `Checked in at ${new Date(dashboard!.todayAttendance!.check_in_time!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+                  : 'Not checked in yet'}
+            </span>
+            {wfhStarted && !wfhEnded && (
+              <span className="text-sm font-normal text-muted-foreground">WFH in progress</span>
+            )}
+            {wfhEnded && (
+              <span className="text-sm font-normal text-muted-foreground">
+                WFH ended at {new Date(dashboard!.todayAttendance!.wfh_end_time!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                {dashboard!.todayAttendance!.total_hours != null && ` (${formatHours(dashboard!.todayAttendance!.total_hours)})`}
+              </span>
+            )}
+            {!wfhStarted && checkedIn && !checkedOut && (
+              <span className="text-sm font-normal text-muted-foreground">In progress</span>
+            )}
+            {!wfhStarted && checkedOut && (
+              <span className="text-sm font-normal text-muted-foreground">
+                Checked out at {new Date(dashboard!.todayAttendance!.check_out_time!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row flex-wrap gap-3">
+          <Button size="lg" disabled={checkedIn || checkIn.isPending || isWFH} onClick={handleCheckIn}>
+            {checkIn.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />}
+            Check In
+          </Button>
+          <Button size="lg" variant="outline" disabled={!checkedIn || checkedOut || checkOut.isPending} onClick={handleCheckOutClick}>
+            {checkOut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+            Check Out
+          </Button>
+          <Button size="lg" variant="secondary" disabled={checkedIn || wfhStarted || logWFH.isPending} onClick={handleLogWFHClick}>
+            {logWFH.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Home className="mr-2 h-4 w-4" />}
+            {isWFH ? 'WFH Logged' : 'Log WFH'}
+          </Button>
+          {wfhStarted && !wfhEnded && (
+            <Button size="lg" variant="outline" disabled={endWFH.isPending} onClick={handleEndWFH}>
+              {endWFH.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+              End WFH
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <LocationMapCard />
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Time-off requests</CardTitle>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">{counts?.pendingLeaves ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Awaiting approval</p>
+            <Link to="/leave/team" className="text-xs text-primary hover:underline mt-2 inline-block">
+              Review leave applications
+            </Link>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Attendance corrections</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">{counts?.pendingRegularizations ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Pending requests</p>
+            <Link to="/attendance/regularization?tab=pending" className="text-xs text-primary hover:underline mt-2 inline-block">
+              Review requests
+            </Link>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Early checkouts</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">{counts?.pendingEarlyCheckouts ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Pending approvals</p>
+            <Link to="/attendance/regularization?tab=early-checkouts" className="text-xs text-primary hover:underline mt-2 inline-block">
+              Review early checkouts
+            </Link>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Team</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{counts?.totalEmployees ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Active people</p>
+            <Link to="/attendance/team" className="text-xs text-primary hover:underline mt-2 inline-block">
+              View team attendance
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={wfhDialogOpen} onOpenChange={setWfhDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log Work From Home</DialogTitle>
+            <DialogDescription>
+              Are you working from home today? This will mark your entire day as WFH.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWfhDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleLogWFHConfirm}>Confirm WFH</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={earlyCheckoutOpen} onOpenChange={setEarlyCheckoutOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Early Checkout</DialogTitle>
+            <DialogDescription>
+              You are checking out before the shift ends. Please provide a reason.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Reason for early checkout..."
+            value={earlyCheckoutReason}
+            onChange={(e) => setEarlyCheckoutReason(e.target.value)}
+            rows={3}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEarlyCheckoutOpen(false)}>Cancel</Button>
+            <Button onClick={handleCheckOutConfirm}>Confirm Checkout</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function EmployeeDashboardView() {
+  const emp = useAuthStore((s) => s.employee)
+  const { data: dashboard, isLoading, refetch } = useQuery({
+    queryKey: ['dashboard', 'employee', emp?.id],
+    queryFn: fetchEmployeeDashboard,
+    enabled: !!emp,
+  })
+
+  const checkIn = useCheckIn()
+  const checkOut = useCheckOut()
+  const logWFH = useLogWFH()
+  const endWFH = useEndWFH()
+
+  const [earlyCheckoutOpen, setEarlyCheckoutOpen] = useState(false)
+  const [earlyCheckoutReason, setEarlyCheckoutReason] = useState('')
+  const [wfhDialogOpen, setWfhDialogOpen] = useState(false)
+
+  // Soft geofence: location is optional context. If the browser cannot provide
+  // it, the server decides whether that is a flag (default) or a block (strict).
+  const handleCheckIn = async () => {
+    try {
+      const coords = await getCurrentPositionQuick()
+      const result = await checkIn.mutateAsync(coords ?? undefined)
+      toast.success(result.is_late ? 'Checked in — late' : 'Checked in successfully')
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      toast.error(err?.message ?? 'Check-in failed')
+    }
+  }
+
+  const handleCheckOutClick = async () => {
+    try {
+      const coords = await getCurrentPositionQuick()
+      const result = await checkOut.mutateAsync(
+        coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}
+      )
+      toast.success(`Checked out. Total: ${formatHours(result.total_hours)}`)
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string; code?: string }
+      if (err?.code === 'VALIDATION_ERROR' && err?.message?.toLowerCase().includes('early_checkout_reason')) {
+        setEarlyCheckoutReason('')
+        setEarlyCheckoutOpen(true)
+      } else {
+        toast.error(err?.message ?? 'Check-out failed')
+      }
+    }
+  }
+
+  const handleCheckOutConfirm = async () => {
+    if (!earlyCheckoutReason.trim()) {
+      toast.error('Please provide a reason for early checkout')
+      return
+    }
+    try {
+      const coords = await getCurrentPositionQuick()
+      const result = await checkOut.mutateAsync({
+        ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
+        early_checkout_reason: earlyCheckoutReason.trim(),
+      })
+      setEarlyCheckoutOpen(false)
+      toast.success(`Checked out. Total: ${formatHours(result.total_hours)}`)
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      toast.error(err?.message ?? 'Check-out failed')
+    }
+  }
+
+  const handleLogWFHClick = () => setWfhDialogOpen(true)
+
+  const handleLogWFHConfirm = async () => {
+    try {
+      await logWFH.mutateAsync()
+      setWfhDialogOpen(false)
+      toast.success('WFH logged for today')
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      toast.error(err?.message ?? 'Failed to log WFH')
+    }
+  }
+
+  const handleEndWFH = async () => {
+    try {
+      const result = await endWFH.mutateAsync()
+      toast.success(`WFH ended. Total: ${formatHours(result.total_hours)}`)
+      refetch()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      toast.error(err?.message ?? 'Failed to end WFH')
+    }
+  }
+
+  if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+
+  const checkedIn = !!dashboard?.todayAttendance?.check_in_time
+  const checkedOut = !!dashboard?.todayAttendance?.check_out_time
+  const isWFH = dashboard?.todayAttendance?.is_wfh ?? false
+  const wfhStarted = isWFH && !!dashboard?.todayAttendance?.wfh_start_time
+  const wfhEnded = !!dashboard?.todayAttendance?.wfh_end_time
+
+  return (
+    <div className="space-y-6">
+      {/* Check-in status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>
+              {wfhStarted
+                ? `WFH since ${new Date(dashboard!.todayAttendance!.wfh_start_time!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+                : checkedIn
+                  ? `Checked in at ${new Date(dashboard!.todayAttendance!.check_in_time!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+                  : 'Not checked in yet'}
+            </span>
+            {wfhStarted && !wfhEnded && (
+              <span className="text-sm font-normal text-muted-foreground">WFH in progress</span>
+            )}
+            {wfhEnded && (
+              <span className="text-sm font-normal text-muted-foreground">
+                WFH ended at {new Date(dashboard!.todayAttendance!.wfh_end_time!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                {dashboard!.todayAttendance!.total_hours != null && ` (${formatHours(dashboard!.todayAttendance!.total_hours)})`}
+              </span>
+            )}
+            {!wfhStarted && checkedIn && !checkedOut && (
+              <span className="text-sm font-normal text-muted-foreground">In progress</span>
+            )}
+            {!wfhStarted && checkedOut && (
+              <span className="text-sm font-normal text-muted-foreground">
+                Checked out at {new Date(dashboard!.todayAttendance!.check_out_time!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row flex-wrap gap-3">
+          <Button
+            size="lg"
+            disabled={checkedIn || checkIn.isPending || isWFH}
+            onClick={handleCheckIn}
+          >
+            {checkIn.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />}
+            Check In
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            disabled={!checkedIn || checkedOut || checkOut.isPending}
+            onClick={handleCheckOutClick}
+          >
+            {checkOut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+            Check Out
+          </Button>
+          <Button
+            size="lg"
+            variant="secondary"
+            disabled={checkedIn || wfhStarted || logWFH.isPending}
+            onClick={handleLogWFHClick}
+          >
+            {logWFH.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Home className="mr-2 h-4 w-4" />}
+            {isWFH ? 'WFH Logged' : 'Log WFH'}
+          </Button>
+          {wfhStarted && !wfhEnded && (
+            <Button size="lg" variant="outline" disabled={endWFH.isPending} onClick={handleEndWFH}>
+              {endWFH.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+              End WFH
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <LocationMapCard />
+
+      <PulseCheckInCard />
+
+      {/* Leave Balances */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {dashboard?.leaveBalances?.map((lb) => {
+          const isPL = lb.leave_type?.code === 'PL'
+          const available =
+            Number(lb.accrued) + Number(lb.opening_balance) + Number(lb.carry_forward_amount) + Number(lb.adjusted) - Number(lb.taken) - Number(lb.pending)
+          const plUsed = Math.max(0, Number(lb.opening_balance) - available)
+          return (
+            <Card key={lb.id}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {lb.leave_type?.name ?? 'Leave'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {available.toFixed(1)}
+                </div>
+                <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+                  {isPL ? (
+                    <>
+                      <span>Used: {plUsed}</span>
+                      <span>Pending: {available}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Used: {lb.taken}</span>
+                      <span>Pending: {lb.pending}</span>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+        <Link to="/leave/apply" className="flex items-center justify-center rounded-lg border border-dashed border-muted-foreground/30 p-4 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+          Request time off <ArrowRight className="ml-1 h-3 w-3" />
+        </Link>
+      </div>
+
+      {/* Upcoming time off */}
+      {dashboard?.upcomingLeaves && dashboard.upcomingLeaves.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center justify-between">
+              <span>Upcoming time off</span>
+              <Link to="/leave" className="text-xs font-normal text-primary hover:underline inline-flex items-center gap-1">
+                View all <ArrowRight className="h-3 w-3" />
+              </Link>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {dashboard.upcomingLeaves.map((leave) => (
+              <div key={leave.id} className="flex items-center justify-between text-sm">
+                <span>
+                  {leave.from_date} — {leave.to_date}
+                </span>
+                <Badge variant={leave.status === 'approved' ? 'secondary' : 'default'}>
+                  {leave.status}
+                </Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* WFH confirmation dialog */}
+      <Dialog open={wfhDialogOpen} onOpenChange={setWfhDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log Work From Home</DialogTitle>
+            <DialogDescription>
+              Are you working from home today? This will mark your entire day as WFH.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWfhDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleLogWFHConfirm}>Confirm WFH</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Early checkout dialog */}
+      <Dialog open={earlyCheckoutOpen} onOpenChange={setEarlyCheckoutOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Early Checkout</DialogTitle>
+            <DialogDescription>
+              You are checking out before the shift ends. Please provide a reason.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Reason for early checkout..."
+            value={earlyCheckoutReason}
+            onChange={(e) => setEarlyCheckoutReason(e.target.value)}
+            rows={3}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEarlyCheckoutOpen(false)}>Cancel</Button>
+            <Button onClick={handleCheckOutConfirm}>Confirm Checkout</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+export default function DashboardPage() {
+  const { isOwner, isHR, isEmployee, isSystemAdmin } = useRole()
+  const employee = useAuthStore((s) => s.employee)
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const dateLabel = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  })
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+            <Sparkles className="h-3 w-3" />
+            {dateLabel}
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+            {greeting}, {employee?.first_name ?? 'there'}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {isEmployee ? 'Your week at a glance — and one small check-in.' : "Here's what needs your attention today."}
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="w-fit">
+          <Link to="/leave/apply">
+            Request time off
+            <ArrowRight className="ml-2 h-3.5 w-3.5" />
+          </Link>
+        </Button>
+      </div>
+
+      {isOwner && (
+        <>
+          <OwnerDashboard />
+          <PulseTrendCard />
+        </>
+      )}
+      {isHR && (
+        <>
+          <HRDashboard />
+          <PulseTrendCard />
+        </>
+      )}
+      {isEmployee && <EmployeeDashboardView />}
+      {isSystemAdmin && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">System Health</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">All systems operational.</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Quick Links</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Link to="/settings/ip-whitelist" className="block text-sm text-primary hover:underline">
+                Network rules
+              </Link>
+              <Link to="/settings/geofence" className="block text-sm text-primary hover:underline">
+                Location policy
+              </Link>
+              <Link to="/team-members" className="block text-sm text-primary hover:underline">
+                People directory
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  )
+}
