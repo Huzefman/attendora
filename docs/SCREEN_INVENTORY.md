@@ -121,6 +121,7 @@ Screens render differently by role — the same route shows different UI to Owne
 - Pending regularization requests count
 - Employees on probation (expiring within 14 days)
 - Team Pulse trend card (8-week aggregate average + participation)
+- Own optional Team Pulse check-in
 - Quick link to all reports
 
 **HR sees:**
@@ -131,6 +132,7 @@ Screens render differently by role — the same route shows different UI to Owne
 - Team on leave today (names)
 - Upcoming exits (exit_date within 7 days)
 - Team Pulse trend card (aggregate only)
+- Own optional Team Pulse check-in
 
 **Employee sees:**
 - Check-in / check-out button (prominent, primary action)
@@ -146,6 +148,7 @@ Screens render differently by role — the same route shows different UI to Owne
 - System health indicators (placeholder for v1)
 - Audit log quick view (last 10 entries)
 - IP whitelist status
+- Team Pulse trend card (aggregate only) and own optional check-in
 
 **Primary tables:** `employees`, `attendance_records`, `leave_applications`, `leave_balances`, `pulse_responses` (own row; admins use `get_pulse_summary`), `notifications`, `employee_onboarding_progress`
 

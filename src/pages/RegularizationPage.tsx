@@ -342,7 +342,6 @@ function EarlyCheckoutsTab() {
 
   const resolveMutation = useMutation({
     mutationFn: async ({ id, action, halfDay }: { id: string; action: 'approve' | 'reject'; halfDay?: boolean }) => {
-      const supabase = await import('@/lib/supabase').then((m) => m.supabase)
       const { error } = await supabase
         .from('attendance_records')
         .update({

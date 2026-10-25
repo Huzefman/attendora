@@ -51,10 +51,10 @@ export function TeamLeaveCalendar() {
   const [loading, setLoading] = useState(true)
 
   const daysInMonth = getDaysInMonth(year, month)
-  const range = getMonthRange(year, month)
 
   useEffect(() => {
     let cancelled = false
+    const range = getMonthRange(year, month)
     const fetch = async () => {
       setLoading(true)
       try {

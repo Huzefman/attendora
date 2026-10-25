@@ -744,33 +744,37 @@ export default function DashboardPage() {
       )}
       {isEmployee && <EmployeeDashboardView />}
       {isSystemAdmin && (
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">System Health</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">All systems operational.</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">Quick Links</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Link to="/settings/ip-whitelist" className="block text-sm text-primary hover:underline">
-                Network rules
-              </Link>
-              <Link to="/settings/geofence" className="block text-sm text-primary hover:underline">
-                Location policy
-              </Link>
-              <Link to="/team-members" className="block text-sm text-primary hover:underline">
-                People directory
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">System Health</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">All systems operational.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Quick Links</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Link to="/settings/ip-whitelist" className="block text-sm text-primary hover:underline">
+                  Network rules
+                </Link>
+                <Link to="/settings/geofence" className="block text-sm text-primary hover:underline">
+                  Location policy
+                </Link>
+                <Link to="/team-members" className="block text-sm text-primary hover:underline">
+                  People directory
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+          <PulseTrendCard />
+        </>
       )}
+      {!isEmployee && <PulseCheckInCard />}
     </div>
   )
 }
