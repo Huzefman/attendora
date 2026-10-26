@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { Fragment, useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
@@ -176,20 +176,20 @@ export default function SettingsLeaveBalancesPage() {
                     <TableHead />
                     <TableHead />
                     {leaveTypes.map((lt) => (
-                      <>
-                        <TableHead key={`${lt!.id}-annual`} className="text-xs font-normal text-muted-foreground min-w-[70px]">
+                      <Fragment key={lt!.id}>
+                        <TableHead className="text-xs font-normal text-muted-foreground min-w-[70px]">
                           Alloc
                         </TableHead>
-                        <TableHead key={`${lt!.id}-opening`} className="text-xs font-normal text-muted-foreground min-w-[80px]">
+                        <TableHead className="text-xs font-normal text-muted-foreground min-w-[80px]">
                           Opening
                         </TableHead>
-                        <TableHead key={`${lt!.id}-adjusted`} className="text-xs font-normal text-muted-foreground min-w-[80px]">
+                        <TableHead className="text-xs font-normal text-muted-foreground min-w-[80px]">
                           Adjusted
                         </TableHead>
-                        <TableHead key={`${lt!.id}-total`} className="text-xs font-normal text-muted-foreground min-w-[70px]">
+                        <TableHead className="text-xs font-normal text-muted-foreground min-w-[70px]">
                           Total
                         </TableHead>
-                      </>
+                      </Fragment>
                     ))}
                   </TableRow>
                 </TableHeader>
@@ -222,8 +222,8 @@ export default function SettingsLeaveBalancesPage() {
                             editingCell?.balanceId === bal?.id && editingCell?.field === 'annual_allocation'
 
                           return (
-                            <>
-                              <TableCell key={`${lt!.id}-annual`}>
+                            <Fragment key={lt!.id}>
+                              <TableCell>
                                 {bal ? (
                                   isEditingAnnual ? (
                                     <Input
@@ -251,7 +251,7 @@ export default function SettingsLeaveBalancesPage() {
                                   <span className="text-muted-foreground text-sm">0</span>
                                 )}
                               </TableCell>
-                              <TableCell key={`${lt!.id}-opening`}>
+                              <TableCell>
                                 {bal ? (
                                   isEditingOpening ? (
                                     <Input
@@ -279,7 +279,7 @@ export default function SettingsLeaveBalancesPage() {
                                   <span className="text-muted-foreground text-sm">0</span>
                                 )}
                               </TableCell>
-                              <TableCell key={`${lt!.id}-adjusted`}>
+                              <TableCell>
                                 {bal ? (
                                   isEditingAdjusted ? (
                                     <Input
@@ -307,10 +307,10 @@ export default function SettingsLeaveBalancesPage() {
                                   <span className="text-muted-foreground text-sm">0</span>
                                 )}
                               </TableCell>
-                              <TableCell key={`${lt!.id}-total`}>
+                              <TableCell>
                                 <span className="text-sm font-medium">{total}</span>
                               </TableCell>
-                            </>
+                            </Fragment>
                           )
                         })}
                       </TableRow>

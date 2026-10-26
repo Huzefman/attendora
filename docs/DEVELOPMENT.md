@@ -16,6 +16,7 @@ There is no separate backend server. Supabase is the backend.
 
 ```bash
 npm run dev            # Vite dev server
+npm run dev:preview    # Vite dev server with synthetic data (no backend)
 npm run typecheck      # tsc --noEmit
 npm run lint           # ESLint
 npm run build          # typecheck + production build
@@ -28,6 +29,27 @@ npm run types:gen
 Node 20+ is required; Node 22 is recommended. Environment values live in `.env.local` and are
 documented in [ENV.md](../ENV.md).
 
+## UI preview mode
+
+`npm run dev:preview` sets `VITE_UI_PREVIEW=true` and runs the app against synthetic data, with
+no Supabase project, network, or environment values. It is a development aid for reviewing the
+interface and is not a replacement for testing against Postgres and RLS.
+
+- Vite aliases `@/lib/supabase` to `src/dev/preview/supabase.ts`. That shim implements the
+  auth and query calls the app uses, backed by fixtures in `src/dev/preview/data.ts`.
+- `src/lib/edge.ts` routes Edge Function calls to `src/dev/preview/edge.ts`, which keeps common
+  actions (check-in/out, WFH, time off, pulse, corrections, config) working in memory.
+- `src/main.tsx` seeds the signed-in user for app routes, while `/`, `/login`, and the password
+  pages start signed out. The service worker and push registration are disabled.
+- Demo accounts: `demo.owner@example.com` (owner), `priya@example.com` (HR), and
+  `sam@example.com` (employee). Any password works. Sign out to switch roles.
+- Reloading a page resets the fixtures. Nothing is persisted.
+- When you add a query, mutation, or Edge Function, update the preview shim and fixtures too, or
+  the preview may show an empty state. Never put real people or credentials in these files.
+
+Start at `http://localhost:5173/dashboard` for the owner workspace, or `/` to review the public
+landing page. The preview is never enabled by `npm run build` or the normal `npm run dev` script.
+
 ## Layout
 
 ```text
@@ -38,6 +60,7 @@ src/
   pages/                 Thin route-level pages
   hooks/                 useAuth, useRole, useMediaQuery, use-toast
   lib/                   supabase.ts, queryClient.ts, edge.ts, brand.ts, utils.ts
+  dev/preview/           Dev-only Supabase/Edge shims and synthetic fixtures
   types/                 database.types.ts (generated) + app types
 supabase/
   migrations/            Numbered SQL migrations

@@ -86,6 +86,19 @@ export default function LoginPage() {
               </p>
             </div>
 
+            {import.meta.env.VITE_UI_PREVIEW === 'true' && (
+              <div className="mb-5 rounded-xl border border-dashed border-indigo-500/40 bg-indigo-500/5 p-3.5 text-xs leading-relaxed">
+                <p className="font-medium text-foreground">Local preview mode</p>
+                <p className="mt-1 text-muted-foreground">
+                  Sign in with{' '}
+                  <code className="font-mono text-foreground">demo.owner@example.com</code>,{' '}
+                  <code className="font-mono text-foreground">priya@example.com</code>, or{' '}
+                  <code className="font-mono text-foreground">sam@example.com</code>. Any
+                  password works. No backend is connected.
+                </p>
+              </div>
+            )}
+
             <LoginForm />
 
             <div className="mt-6 flex items-center justify-between text-sm">

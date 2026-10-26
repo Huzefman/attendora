@@ -19,6 +19,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:preview": "VITE_UI_PREVIEW=true vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

@@ -167,9 +167,16 @@ export default function App() {
             navigate('/set-password', { replace: true })
           } else if (employee) {
             const isPostPasswordSetup = useAuthStore.getState().isPostPasswordSetup
+            // The preview shim signs in automatically on every load. Keep deep
+            // links on the route the developer opened instead of bouncing to
+            // the dashboard.
+            const isPreviewDeepLink =
+              import.meta.env.VITE_UI_PREVIEW === 'true' &&
+              window.location.pathname !== '/' &&
+              window.location.pathname !== '/login'
             if (isPostPasswordSetup) {
               useAuthStore.getState().setPostPasswordSetup(false)
-            } else {
+            } else if (!isPreviewDeepLink) {
               navigate('/dashboard', { replace: true })
             }
           }

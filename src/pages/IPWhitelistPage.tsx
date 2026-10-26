@@ -151,12 +151,12 @@ export default function IPWhitelistPage() {
               {entries.map((entry) => (
                 <div key={entry.id} className="flex items-center justify-between py-3 text-sm">
                   <div className="space-y-0.5">
-                    <p className="font-medium flex items-center gap-2">
+                    <div className="font-medium flex items-center gap-2">
                       {entry.label}
                       <Badge variant={entry.is_active ? 'default' : 'secondary'} className="text-[10px]">
                         {entry.is_active ? 'Active' : 'Inactive'}
                       </Badge>
-                    </p>
+                    </div>
                     <p className="text-xs text-muted-foreground font-mono">{entry.ip_range}</p>
                   </div>
                   <div className="flex gap-1">

@@ -187,6 +187,31 @@ npm run dev
 
 Open `http://localhost:5173`. The public landing page is at `/`, and the app is at `/login`.
 
+### Preview the interface without a backend
+
+If you only want to click through Attendora — no Supabase project, migrations, or environment
+values — run:
+
+```bash
+npm run dev:preview
+```
+
+Open **http://localhost:5173/dashboard**. This starts Vite with an in-memory Supabase shim and
+synthetic fixture data. Auth is simulated, Edge Function calls are stubbed, and no request leaves
+the browser. The public landing page is at `/`; the split-screen sign-in is at `/login`.
+
+Use any password with one of these demo accounts:
+
+| Email | Role |
+|---|---|
+| `demo.owner@example.com` | Owner |
+| `priya@example.com` | HR |
+| `sam@example.com` | Employee |
+
+Deep links work while the preview is open. Sign out from the avatar menu to switch roles. Preview
+changes live in memory and reset on a full reload. The mode is enabled only by the
+`dev:preview` script and is not intended for a production deployment.
+
 ---
 
 ## Scripts
@@ -194,6 +219,7 @@ Open `http://localhost:5173`. The public landing page is at `/`, and the app is 
 | Command | What it does |
 |---|---|
 | `npm run dev` | Start Vite |
+| `npm run dev:preview` | Start Vite with synthetic data and no backend |
 | `npm run build` | Type-check and build for production |
 | `npm run preview` | Preview the production build |
 | `npm run typecheck` | `tsc --noEmit` |

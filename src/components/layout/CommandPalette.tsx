@@ -170,20 +170,27 @@ export function CommandPalette() {
 
         <CommandSeparator />
         <CommandGroup heading="Quick actions">
-          <CommandItem value="request time off apply leave" onSelect={() => go('/leave/apply')}>
-            <Sparkles className="text-muted-foreground" />
-            <span>Request time off</span>
-          </CommandItem>
+          {(role === 'hr' || role === 'employee') && (
+            <CommandItem value="request time off apply leave" onSelect={() => go('/leave/apply')}>
+              <Sparkles className="text-muted-foreground" />
+              <span>Request time off</span>
+            </CommandItem>
+          )}
           {role === 'owner' && (
             <CommandItem value="add person create employee" onSelect={() => go('/team-members/new')}>
               <Plus className="text-muted-foreground" />
               <span>Add a person</span>
             </CommandItem>
           )}
-          <CommandItem value="my attendance check in" onSelect={() => go('/attendance')}>
-            <Clock className="text-muted-foreground" />
-            <span>Go to attendance</span>
-          </CommandItem>
+          {(role === 'owner' || role === 'hr' || role === 'employee') && (
+            <CommandItem
+              value="attendance check in team"
+              onSelect={() => go(role === 'employee' ? '/attendance' : '/attendance/team')}
+            >
+              <Clock className="text-muted-foreground" />
+              <span>{role === 'employee' ? 'Go to my attendance' : 'Go to team attendance'}</span>
+            </CommandItem>
+          )}
         </CommandGroup>
       </CommandList>
       <div className="flex items-center justify-between border-t px-3 py-2 text-[11px] text-muted-foreground">

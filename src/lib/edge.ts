@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { supabase } from '@/lib/supabase'
 
 /**
  * Returns a fresh access token, refreshing the session if the current
@@ -29,6 +29,11 @@ export async function callEdgeFunction<TBody, TResponse>(
   functionName: string,
   body: TBody
 ): Promise<TResponse> {
+  if (import.meta.env.VITE_UI_PREVIEW === 'true') {
+    const { previewEdgeResponse } = await import('@/dev/preview/edge')
+    return previewEdgeResponse(functionName, body) as TResponse
+  }
+
   const token = await getFreshToken()
 
   const res = await fetch(
@@ -59,6 +64,11 @@ export async function callEdgeFunctionFormData<TResponse>(
   functionName: string,
   formData: FormData
 ): Promise<TResponse> {
+  if (import.meta.env.VITE_UI_PREVIEW === 'true') {
+    const { previewEdgeResponse } = await import('@/dev/preview/edge')
+    return previewEdgeResponse(functionName, formData) as TResponse
+  }
+
   const token = await getFreshToken()
 
   const res = await fetch(

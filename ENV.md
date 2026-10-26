@@ -13,6 +13,7 @@ Never commit real values. See `.env.example` for the full template.
 |---|---|
 | `VITE_SUPABASE_URL` | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Public anon key — safe to expose; RLS enforces access |
+| `VITE_UI_PREVIEW` | Development only. Set to `true` (normally via `npm run dev:preview`) to use the synthetic, in-browser preview instead of Supabase. Leave unset for real environments. |
 
 Only `VITE_`-prefixed values are available in client code. Never prefix a secret with `VITE_`.
 
